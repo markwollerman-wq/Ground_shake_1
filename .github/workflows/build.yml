@@ -1,0 +1,41 @@
+name: Build plugin
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel --target GroundShake_VST3 GroundShake_AU
+
+      - name: Collect binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp -R "build/GroundShake_artefacts/Release/VST3/Ground Shake.vst3" dist/
+          if [ -d "build/GroundShake_artefacts/Release/AU" ]; then cp -R build/GroundShake_artefacts/Release/AU/*.component dist/; fi
+          echo "Architectures:"; lipo -archs "dist/Ground Shake.vst3/Contents/MacOS/Ground Shake"
+          # Ad-hoc sign, then zip with ditto so the bundles keep their structure
+          for b in dist/*.vst3 dist/*.component; do [ -e "$b" ] && codesign --force --deep -s - "$b"; done
+          cd dist
+          ditto -c -k --keepParent "Ground Shake.vst3" GroundShake-VST3-mac.zip
+          [ -e "Ground Shake.component" ] && ditto -c -k --keepParent "Ground Shake.component" GroundShake-AU-mac.zip
+          rm -rf *.vst3 *.component
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GroundShake-macOS
+          path: dist
